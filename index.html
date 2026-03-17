@@ -951,7 +951,8 @@ async function showPreview(rows, title) {
     `<span style="color:var(--green)">${novas} novas</span>` +
     (totalDup > 0 ? ` · <span style="color:var(--yellow)">${totalDup} prováveis duplicatas</span> (desmarcadas automaticamente)` : '');
 
-  document.getElementById('check-all').checked = true;
+  // check-all reflects only if all non-duplicates are present (duplicates stay unchecked)
+  document.getElementById('check-all').checked = rows.every(r => !r.duplicata);
 
   const despesaCats = categories.filter(c=>c.tipo==='despesa');
   const receitaCats = categories.filter(c=>c.tipo==='receita');
@@ -985,7 +986,15 @@ async function showPreview(rows, title) {
 }
 
 function toggleAllChecks(master) {
-  document.querySelectorAll('.imp-check').forEach(c => c.checked = master.checked);
+  document.querySelectorAll('.imp-check').forEach((c, i) => {
+    const idx = parseInt(c.dataset.idx);
+    // Never force-check a duplicate when selecting all
+    if (importedRows[idx] && importedRows[idx].duplicata && master.checked) {
+      c.checked = false;
+    } else {
+      c.checked = master.checked;
+    }
+  });
 }
 
 function cancelImport() {
@@ -1001,8 +1010,8 @@ async function confirmImport() {
   for (let i = 0; i < checks.length; i++) {
     if (!checks[i].checked) continue;
     const idx = parseInt(checks[i].dataset.idx);
-    const cat = catSels[i].value;
-    if (!cat) { toast('Selecione a categoria de todas as transações marcadas.','err'); catSels[i].style.borderColor='var(--red)'; catSels[i].focus(); return; }
+    const cat = catSels[idx].value;
+    if (!cat) { toast('Selecione a categoria de todas as transações marcadas.','err'); catSels[idx].style.borderColor='var(--red)'; catSels[idx].focus(); return; }
     const r = importedRows[idx];
     toInsert.push({ descricao: r.descricao, valor: r.valor, data: r.data, categoria_id: cat, obs: null });
   }
