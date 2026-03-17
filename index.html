@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Finanças Pessoais</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -205,8 +204,8 @@
   </div>
 </div>
 
-<!-- CONFIG -->
-<div id="config-screen">
+<!-- CONFIG (oculta — credenciais fixas no código) -->
+<div id="config-screen" style="display:none!important">
   <div class="config-box">
     <h2>Configuração inicial</h2>
     <p>Cole suas credenciais do Supabase abaixo. Ficam salvas só no seu navegador.</p>
@@ -482,8 +481,12 @@ let sb = null;
 const PALETTE = ['#6c63ff','#3ecf8e','#ff4d6d','#f5c842','#4fc3f7','#ff9f43','#a29bfe','#fd79a8','#00cec9','#e17055','#74b9ff','#55efc4','#fdcb6e','#fab1a0','#81ecec'];
 let selectedColor = PALETTE[0], catType = 'despesa', recType = 'despesa';
 
-function getConfig(){ return { url: localStorage.getItem('fp_url')||'', key: localStorage.getItem('fp_key')||'' }; }
-function initSB(url,key){ sb = window.supabase.createClient(url,key); }
+// ▼▼▼ SUBSTITUA AQUI SUAS CREDENCIAIS DO SUPABASE ▼▼▼
+const SUPABASE_URL = 'SUPABASE_URL_PLACEHOLDER';
+const SUPABASE_KEY = 'SUPABASE_KEY_PLACEHOLDER';
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+function initSB(){ sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }
 function showScreen(id){
   ['auth-screen','config-screen','app'].forEach(s=>{
     const el=document.getElementById(s);
@@ -492,9 +495,7 @@ function showScreen(id){
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
-  const cfg=getConfig();
-  if(!cfg.url||!cfg.key){ showScreen('config-screen'); return; }
-  initSB(cfg.url,cfg.key);
+  initSB();
   const {data:{session}}=await sb.auth.getSession();
   if(session) await onLogin(session.user); else showScreen('auth-screen');
   buildColorRow(); setTodayDate();
@@ -515,18 +516,7 @@ function setTodayDate(){ document.getElementById('tx-data').value=new Date().toI
 // ═══════════════════════════════════════
 //  CONFIG SCREEN
 // ═══════════════════════════════════════
-async function saveConfig(){
-  const url=document.getElementById('cfg-url').value.trim(), key=document.getElementById('cfg-key').value.trim();
-  const msg=document.getElementById('cfg-msg');
-  if(!url||!key){ msg.textContent='Preencha os dois campos.'; return; }
-  localStorage.setItem('fp_url',url); localStorage.setItem('fp_key',key);
-  initSB(url,key);
-  try{
-    const {error}=await sb.from('categorias').select('id').limit(1);
-    if(error&&error.code!=='PGRST116') throw error;
-    showScreen('auth-screen');
-  }catch(e){ msg.textContent='Erro de conexão: '+(e.message||''); }
-}
+// saveConfig removida — credenciais fixas no código
 
 // ═══════════════════════════════════════
 //  AUTH
