@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Finanças Pessoais</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -294,10 +293,16 @@
           <button class="btn-add" onclick="openModal()">+ Novo Lançamento</button>
         </div>
         <div class="transactions-card">
-          <div class="tx-filters">
+          <div class="tx-filters" style="flex-wrap:wrap;gap:8px 6px">
             <button class="filter-btn active" onclick="setFilter('all',this)">Todas</button>
             <button class="filter-btn" onclick="setFilter('receita',this)">Receitas</button>
             <button class="filter-btn" onclick="setFilter('despesa',this)">Despesas</button>
+            <div id="cat-filter-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+            <div style="margin-left:auto">
+              <input type="text" id="tx-search" placeholder="🔍 Buscar lançamento…" oninput="renderAllTxs()"
+                style="background:var(--surface);border:1px solid var(--border);border-radius:20px;color:var(--text);padding:5px 14px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;width:200px;transition:border-color .2s"
+                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            </div>
           </div>
           <table>
             <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Valor</th><th></th></tr></thead>
@@ -558,7 +563,7 @@ async function onLogin(user){
 //  STATE
 // ═══════════════════════════════════════
 let currentYear, currentMonth, allTxs=[], categories=[], recorrentes=[];
-let txFilter='all', editingTxId=null, txType='receita', editingRecId=null;
+let txFilter='all', txCatFilter='', editingTxId=null, txType='receita', editingRecId=null;
 let chartPizza=null, chartBarras=null;
 const MONTHS=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -589,7 +594,7 @@ async function loadCategories(){
   if(error){toast('Erro ao carregar categorias','err');return;}
   if(!data||data.length===0){ const {data:ins}=await sb.from('categorias').insert(DEFAULT_CATS).select(); categories=ins||[]; }
   else categories=data;
-  renderCatGrid(); populateCatSelect();
+  renderCatGrid(); populateCatSelect(); buildCatFilterBtns();
 }
 function renderCatGrid(){
   const grid=document.getElementById('cat-grid');
@@ -641,11 +646,37 @@ function renderDashboard(){
 }
 function renderAllTxs(){
   let f=allTxs;
-  if(txFilter==='receita') f=allTxs.filter(t=>t.categorias?.tipo==='receita');
-  if(txFilter==='despesa') f=allTxs.filter(t=>t.categorias?.tipo==='despesa');
+  if(txFilter==='receita') f=f.filter(t=>t.categorias?.tipo==='receita');
+  if(txFilter==='despesa') f=f.filter(t=>t.categorias?.tipo==='despesa');
+  if(txCatFilter) f=f.filter(t=>t.categoria_id===txCatFilter);
+  const q=(document.getElementById('tx-search')?.value||'').trim().toLowerCase();
+  if(q) f=f.filter(t=>(t.descricao||'').toLowerCase().includes(q)||(t.obs||'').toLowerCase().includes(q)||(t.categorias?.nome||'').toLowerCase().includes(q));
   renderRows('all-tbody',f);
 }
-function setFilter(f,btn){ txFilter=f; document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderAllTxs(); }
+function setFilter(f,btn){
+  txFilter=f; txCatFilter='';
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.cat-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderAllTxs();
+}
+function setCatFilter(catId,btn){
+  txCatFilter= txCatFilter===catId?'':catId; // toggle
+  txFilter='all';
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.cat-filter-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.filter-btn').classList.add('active'); // reset "Todas"
+  if(txCatFilter) btn.classList.add('active');
+  renderAllTxs();
+}
+function buildCatFilterBtns(){
+  const wrap=document.getElementById('cat-filter-btns'); if(!wrap)return;
+  wrap.innerHTML=categories.map(c=>
+    `<button class="filter-btn cat-filter-btn" onclick="setCatFilter('${c.id}',this)"
+      style="border-color:${c.cor}22;color:${c.cor}">
+      ${c.nome}
+    </button>`
+  ).join('');
+}
 
 function renderChartPizza(despesas){
   const g={};
@@ -653,7 +684,27 @@ function renderChartPizza(despesas){
   const labels=Object.keys(g),values=labels.map(l=>g[l].val),colors=labels.map(l=>g[l].cor);
   const ctx=document.getElementById('chart-pizza').getContext('2d');
   if(chartPizza)chartPizza.destroy();
-  chartPizza=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data:values,backgroundColor:colors,borderWidth:2,borderColor:'#1c1f2e'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#7b7f96',font:{size:11},boxWidth:10}},tooltip:{callbacks:{label:c=>` ${fmt(c.raw)}`}}}}});
+  chartPizza=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data:values,backgroundColor:colors,borderWidth:2,borderColor:'#1c1f2e'}]},options:{responsive:true,maintainAspectRatio:false,onClick:(e,els)=>{
+    if(!els.length)return;
+    const label=labels[els[0].index];
+    const cat=categories.find(c=>c.nome===label);
+    if(!cat)return;
+    // navigate to transacoes filtered by this category
+    const navItem=document.querySelector('.nav-item[onclick*="transacoes"]');
+    goPage('transacoes',navItem);
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    if(navItem) navItem.classList.add('active');
+    txFilter='all'; txCatFilter=cat.id;
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector('.filter-btn').classList.add('active');
+    setTimeout(()=>{
+      document.querySelectorAll('.cat-filter-btn').forEach(b=>{
+        if(b.textContent.trim()===label) b.classList.add('active');
+      });
+      renderAllTxs();
+    },50);
+  },plugins:{legend:{position:'right',labels:{color:'#7b7f96',font:{size:11},boxWidth:10}},tooltip:{callbacks:{label:c=>` ${fmt(c.raw)} (clique para ver)`}}}}});
+  document.getElementById('chart-pizza').style.cursor='pointer';
 }
 function renderChartBarras(sumR,sumD){
   const ctx=document.getElementById('chart-barras').getContext('2d');
