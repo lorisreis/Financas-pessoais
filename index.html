@@ -951,7 +951,6 @@ async function showPreview(rows, title) {
     `<span style="color:var(--green)">${novas} novas</span>` +
     (totalDup > 0 ? ` · <span style="color:var(--yellow)">${totalDup} prováveis duplicatas</span> (desmarcadas automaticamente)` : '');
 
-  // check-all reflects only if all non-duplicates are present (duplicates stay unchecked)
   document.getElementById('check-all').checked = rows.every(r => !r.duplicata);
 
   const despesaCats = categories.filter(c=>c.tipo==='despesa');
@@ -986,9 +985,8 @@ async function showPreview(rows, title) {
 }
 
 function toggleAllChecks(master) {
-  document.querySelectorAll('.imp-check').forEach((c, i) => {
+  document.querySelectorAll('.imp-check').forEach((c) => {
     const idx = parseInt(c.dataset.idx);
-    // Never force-check a duplicate when selecting all
     if (importedRows[idx] && importedRows[idx].duplicata && master.checked) {
       c.checked = false;
     } else {
