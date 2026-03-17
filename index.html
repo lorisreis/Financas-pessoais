@@ -821,10 +821,10 @@ function handleFile(input, type) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
-      if (type === 'ofx') parseOFX(e.target.result);
-      else parseCSV(e.target.result);
+      if (type === 'ofx') await parseOFX(e.target.result);
+      else await parseCSV(e.target.result);
     } catch(err) {
       toast('Erro ao ler arquivo: ' + err.message, 'err');
     }
@@ -834,7 +834,7 @@ function handleFile(input, type) {
   input.value = '';
 }
 
-function parseOFX(text) {
+async function parseOFX(text) {
   // Normalize line endings
   text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const rows = [];
@@ -854,10 +854,10 @@ function parseOFX(text) {
     rows.push({ fitid, descricao: cleanDesc(memo), data: dateStr, valor: Math.abs(amt), tipo: amt >= 0 ? 'receita' : 'despesa', fonte: 'ofx' });
   }
   if (!rows.length) { toast('Nenhuma transação encontrada no OFX. Verifique o arquivo.','err'); return; }
-  showPreview(rows, 'Conta corrente / PIX — ' + rows.length + ' transações');
+  await showPreview(rows, 'Conta corrente / PIX — ' + rows.length + ' transações');
 }
 
-function parseCSV(text) {
+async function parseCSV(text) {
   text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const lines = text.trim().split('\n').filter(l=>l.trim());
   if (lines.length < 2) { toast('CSV vazio ou inválido.','err'); return; }
@@ -897,7 +897,7 @@ function parseCSV(text) {
   }
 
   if (!rows.length) { toast('Nenhuma transação encontrada no CSV.','err'); return; }
-  showPreview(rows, 'Cartão de crédito — ' + rows.length + ' transações');
+  await showPreview(rows, 'Cartão de crédito — ' + rows.length + ' transações');
 }
 
 function splitCSVLine(line) {
@@ -916,12 +916,41 @@ function cleanDesc(s) {
   return s.replace(/\s+/g,' ').trim().substring(0,120);
 }
 
-function showPreview(rows, title) {
+async function showPreview(rows, title) {
   importedRows = rows;
   document.getElementById('preview-title').textContent = title;
-  document.getElementById('preview-summary').textContent =
-    rows.length + ' transações encontradas. Selecione as que deseja importar e escolha a categoria de cada uma.';
+  document.getElementById('preview-summary').textContent = 'Verificando duplicatas…';
   document.getElementById('import-preview').style.display = '';
+
+  // Fetch existing transactions for the date range covered by these rows
+  const dates = rows.map(r=>r.data).filter(Boolean);
+  const minDate = dates.sort()[0];
+  const maxDate = dates.sort().reverse()[0];
+  let existingSet = new Set();
+  if (minDate && maxDate) {
+    const { data: existing } = await sb.from('transacoes')
+      .select('descricao,valor,data')
+      .gte('data', minDate).lte('data', maxDate);
+    if (existing) {
+      existing.forEach(t => {
+        existingSet.add(`${t.data}|${t.descricao.trim().toLowerCase()}|${parseFloat(t.valor).toFixed(2)}`);
+      });
+    }
+  }
+
+  // Mark duplicates
+  rows.forEach(r => {
+    const key = `${r.data}|${r.descricao.trim().toLowerCase()}|${parseFloat(r.valor).toFixed(2)}`;
+    r.duplicata = existingSet.has(key);
+  });
+
+  const totalDup = rows.filter(r=>r.duplicata).length;
+  const novas = rows.length - totalDup;
+  document.getElementById('preview-summary').innerHTML =
+    `<strong style="color:var(--text)">${rows.length}</strong> transações encontradas — ` +
+    `<span style="color:var(--green)">${novas} novas</span>` +
+    (totalDup > 0 ? ` · <span style="color:var(--yellow)">${totalDup} prováveis duplicatas</span> (desmarcadas automaticamente)` : '');
+
   document.getElementById('check-all').checked = true;
 
   const despesaCats = categories.filter(c=>c.tipo==='despesa');
@@ -934,12 +963,16 @@ function showPreview(rows, title) {
     const val  = r.tipo==='despesa'
       ? `<span class="tx-value d">- ${fmt(r.valor)}</span>`
       : `<span class="tx-value r">+ ${fmt(r.valor)}</span>`;
-    return `<tr>
-      <td><input type="checkbox" class="imp-check" data-idx="${i}" checked></td>
-      <td style="font-size:12px">${r.descricao}</td>
+    const dupBadge = r.duplicata
+      ? `<span style="font-size:10px;background:#f5c84222;color:#f5c842;padding:2px 8px;border-radius:10px;font-weight:600">⚠ Duplicata</span>`
+      : '';
+    const rowStyle = r.duplicata ? 'opacity:.5' : '';
+    return `<tr style="${rowStyle}">
+      <td><input type="checkbox" class="imp-check" data-idx="${i}" ${r.duplicata ? '' : 'checked'}></td>
+      <td style="font-size:12px">${r.descricao} ${dupBadge}</td>
       <td style="color:var(--muted);font-size:12px">${fmtDate(r.data)}</td>
       <td>${val}</td>
-      <td><span class="freq-badge ${r.tipo==='receita'?'mensal':'anual'}" style="${r.tipo==='receita'?'background:#3ecf8e22;color:#3ecf8e':'background:#ff4d6d22;color:#ff4d6d'}">${r.tipo==='receita'?'Receita':'Despesa'}</span></td>
+      <td><span style="${r.tipo==='receita'?'background:#3ecf8e22;color:#3ecf8e':'background:#ff4d6d22;color:#ff4d6d'};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">${r.tipo==='receita'?'Receita':'Despesa'}</span></td>
       <td>
         <select class="imp-cat" data-idx="${i}" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
           <option value="">Selecione…</option>${opts}
