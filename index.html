@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -714,7 +713,8 @@ function editRec(id){
   document.getElementById('rec-dia').value=r.dia; document.getElementById('rec-obs').value=r.obs||'';
   document.getElementById('rec-freq').value=r.frequencia; toggleMesRef();
   if(r.mes_ref) document.getElementById('rec-mes-ref').value=r.mes_ref;
-  setTimeout(()=>{ document.getElementById('rec-cat').value=r.categoria_id||''; },50);
+  populateCatSelect(r.categorias?.tipo||'despesa','rec-cat');
+  document.getElementById('rec-cat').value=r.categoria_id||'';
   document.getElementById('rec-modal').classList.add('open');
 }
 async function saveRec(){
@@ -755,10 +755,14 @@ function setType(t){ txType=t; document.getElementById('type-r').classList.toggl
 function editTx(id){
   const tx=allTxs.find(t=>t.id===id); if(!tx)return;
   editingTxId=id; document.getElementById('modal-title').textContent='Editar Lançamento';
-  setType(tx.categorias?.tipo||'despesa');
+  const tipo=tx.categorias?.tipo||'despesa';
+  populateCatSelect(tipo,'tx-cat');
+  document.getElementById('type-r').classList.toggle('active',tipo==='receita');
+  document.getElementById('type-d').classList.toggle('active',tipo==='despesa');
+  txType=tipo;
   document.getElementById('tx-desc').value=tx.descricao||''; document.getElementById('tx-valor').value=tx.valor;
   document.getElementById('tx-data').value=tx.data; document.getElementById('tx-obs').value=tx.obs||'';
-  setTimeout(()=>{ document.getElementById('tx-cat').value=tx.categoria_id||''; },50);
+  document.getElementById('tx-cat').value=tx.categoria_id||'';
   document.getElementById('tx-modal').classList.add('open');
 }
 async function saveTx(){
